@@ -267,3 +267,5 @@ jobs:
         with:
           name: vitisai-smoke-log-linux-${{ matrix.model }}
           path: vitisai.log
+
+# (touched to make GitHub index this workflow on the new default branch)
