@@ -1,45 +1,32 @@
+# ==========================================================================
+# BRANCH-ONLY -- devlab/ephemeral-runner. DO NOT MERGE AS-IS.
+#
+# Proves that an ephemeral, orchestrator-provisioned runner on a DevLab Strix
+# Halo can serve npu-amd-linux. Three deltas from pr3608-sync, all reverted
+# before any PR:
+#
+#   1. npu-amd-linux targets the label 'devlab-ephemeral' instead of
+#      [X64, stx, rai300-400]. The Halo is a Ryzen AI Max+ 395 and would
+#      arguably answer to stx, but 'stx' is already carried by a different
+#      box in the XSJ pool -- adding it here would silently route that pool's
+#      jobs onto this machine. A label naming the pool, not the silicon,
+#      keeps the routing decision visible in the workflow file.
+#   2. Every other job is hard-disabled. They ask for NVIDIA, macOS/ARM64 and
+#      Windows runners that this pool does not have and never will, so on a
+#      dispatch they would queue until GitHub expired them.
+#   3. push and pull_request triggers removed. This fork exists to be
+#      dispatched at; nothing here should fire because a commit landed.
+#
+# Hardware was checked before any of this was written -- amdxdna loaded,
+# /dev/accel/accel0 openable as the runner account, and egress 200 to the
+# FlexML tarball and both Hugging Face endpoints. cmake is NOT installed on
+# the host; see devlab-host-prep.yml.
+# ==========================================================================
 name: CI (self-hosted)
 
 on:
   workflow_dispatch: # allows manual triggering
-  push:
-    branches:
-      - master
-    paths: [
-      '.github/workflows/build.yml',
-      '**/CMakeLists.txt',
-      '**/.cmake',
-      '**/*.h',
-      '**/*.hpp',
-      '**/*.c',
-      '**/*.cpp',
-      '**/*.cu',
-      '**/*.cuh',
-      '**/*.swift',
-      '**/*.m',
-      '**/*.mm',
-      '**/*.metal',
-      '**/*.comp'
-    ]
-
-  pull_request:
-    types: [opened, synchronize, reopened]
-    paths: [
-      '.github/workflows/build-self-hosted.yml',
-      '**/CMakeLists.txt',
-      '**/.cmake',
-      '**/*.h',
-      '**/*.hpp',
-      '**/*.c',
-      '**/*.cpp',
-      '**/*.cu',
-      '**/*.cuh',
-      '**/*.swift',
-      '**/*.m',
-      '**/*.mm',
-      '**/*.metal',
-      '**/*.comp'
-    ]
+  # BRANCH-ONLY: push and pull_request removed. See banner.
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref && github.ref || github.run_id }}
@@ -47,6 +34,8 @@ concurrency:
 
 jobs:
   gpu-cuda:
+    # BRANCH-ONLY: no NVIDIA runner in this pool; it would queue forever.
+    if: false
     runs-on: [self-hosted, Linux, NVIDIA]
 
     steps:
@@ -61,6 +50,8 @@ jobs:
           GG_BUILD_CUDA=1 bash ./ci/run.sh ~/results/whisper.cpp ~/mnt/whisper.cpp
 
   gpu-vulkan-nvidia-cm:
+    # BRANCH-ONLY: no NVIDIA runner in this pool; it would queue forever.
+    if: false
     runs-on: [self-hosted, Linux, NVIDIA]
 
     steps:
@@ -75,6 +66,8 @@ jobs:
           GG_BUILD_VULKAN=1 GGML_VK_DISABLE_COOPMAT2=1 bash ./ci/run.sh ~/results/whisper.cpp ~/mnt/whisper.cpp
 
   gpu-vulkan-nvidia-cm2:
+    # BRANCH-ONLY: no NVIDIA + COOPMAT2 runner in this pool; it would queue forever.
+    if: false
     runs-on: [self-hosted, Linux, NVIDIA, COOPMAT2]
 
     steps:
@@ -89,6 +82,8 @@ jobs:
           GG_BUILD_VULKAN=1 bash ./ci/run.sh ~/results/whisper.cpp ~/mnt/whisper.cpp
 
   gpu-metal:
+    # BRANCH-ONLY: no macOS/ARM64 runner in this pool; it would queue forever.
+    if: false
     runs-on: [self-hosted, macOS, ARM64]
 
     steps:
@@ -102,6 +97,8 @@ jobs:
           GG_BUILD_METAL=1 bash ./ci/run.sh ~/results/whisper.cpp ~/mnt/whisper.cpp
 
   gpu-vulkan:
+    # BRANCH-ONLY: no macOS/ARM64 runner in this pool; it would queue forever.
+    if: false
     runs-on: [self-hosted, macOS, ARM64]
 
     steps:
@@ -116,6 +113,8 @@ jobs:
           GG_BUILD_VULKAN=1 bash ./ci/run.sh ~/results/whisper.cpp ~/mnt/whisper.cpp
 
   npu-amd-windows:
+    # BRANCH-ONLY: no Windows NPU runner in this pool; it would queue forever.
+    if: false
     runs-on: [self-hosted, Windows, X64, stx, rai300-400]
     timeout-minutes: 60
     continue-on-error: true   # advisory while the runner pool is new; revisit later
@@ -211,7 +210,8 @@ jobs:
           path: vitisai.log
 
   npu-amd-linux:
-    runs-on: [self-hosted, Linux, X64, stx, rai300-400]
+    # BRANCH-ONLY: was [self-hosted, Linux, X64, stx, rai300-400]. See banner.
+    runs-on: [self-hosted, Linux, devlab-ephemeral]
     timeout-minutes: 60
     continue-on-error: true   # advisory while the runner pool is new; revisit later
 
