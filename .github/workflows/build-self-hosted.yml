@@ -211,7 +211,15 @@ jobs:
 
   npu-amd-linux:
     # BRANCH-ONLY: was [self-hosted, Linux, X64, stx, rai300-400]. See banner.
-    runs-on: [self-hosted, Linux, devlab-ephemeral]
+    #
+    # 'npu-ready' rather than 'devlab-ephemeral'. Every host in the pool carries
+    # devlab-ephemeral, and only two of six have the NPU userspace this job
+    # needs -- so which one it landed on was decided by whichever slot happened
+    # to be free, and the run passed or failed on pool timing rather than on
+    # anything about the code. That is the failure shape issue #27 was opened
+    # for: it reads as flaky, it is not, and the cause is three machines away
+    # from the symptom.
+    runs-on: [self-hosted, Linux, npu-ready]
     timeout-minutes: 60
     continue-on-error: true   # advisory while the runner pool is new; revisit later
 
