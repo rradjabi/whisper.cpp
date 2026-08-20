@@ -113,9 +113,11 @@ jobs:
           GG_BUILD_VULKAN=1 bash ./ci/run.sh ~/results/whisper.cpp ~/mnt/whisper.cpp
 
   npu-amd-windows:
-    # BRANCH-ONLY: no Windows NPU runner in this pool; it would queue forever.
+    # BRANCH-ONLY: still held off, but no longer for want of a machine.
+    # X2-LA01-S05-D01 answers [self-hosted, Windows, strix-halo, npu] now.
+    # Turning this on is a separate decision from renaming the labels.
     if: false
-    runs-on: [self-hosted, Windows, X64, stx, rai300-400]
+    runs-on: [self-hosted, Windows, strix-halo, npu]
     timeout-minutes: 60
     continue-on-error: true   # advisory while the runner pool is new; revisit later
 
@@ -219,7 +221,7 @@ jobs:
     # anything about the code. That is the failure shape issue #27 was opened
     # for: it reads as flaky, it is not, and the cause is three machines away
     # from the symptom.
-    runs-on: [self-hosted, Linux, npu-ready]
+    runs-on: [self-hosted, Linux, npu]
     timeout-minutes: 60
     continue-on-error: true   # advisory while the runner pool is new; revisit later
 
