@@ -1,16 +1,18 @@
 name: DevLab Ephemeral CI
 
-# Drop into playbooks-ephemeral-poc as .github/workflows/devlab-halo.yml
+# Drop into a repository the orchestrator watches -- rradjabi/whisper.cpp on
+# devlab/ephemeral-runner today -- as .github/workflows/devlab-halo-playbooks.yml.
+# Nothing watches rradjabi/ephemeral-ci, so it does not run from where it lives.
 #
 # Every job here runs on a runner that does not exist until the job is queued.
 # The DevLab orchestrator provisions it on demand in a runner slot on one of the
 # pool's machines -- four Strix Halo boxes running Linux and one Windows host
 # -- registers it as --ephemeral, and removes it afterwards.
 #
-# The `strix-halo` label is what routes these jobs to DevLab. The existing
-# `strix-point` and `radeon-r9700` jobs in test-ephemeral-ci.yml stay on the XSJ pool, so both can run
-# against this repository at the same time without either claiming the other's
-# work.
+# The `strix-halo` label is what routes these jobs to DevLab. Jobs in the same
+# repository asking for `strix-point` or `radeon-r9700` stay on the XSJ pool, so
+# both pools can run against one repository at the same time without either
+# claiming the other's work.
 #
 # The two matrix jobs below check the pool's scheduling contract from opposite
 # sides, and the contract is not "one job at a time" -- it is one job at a time
