@@ -1,0 +1,144 @@
+name: DevLab Ephemeral CI
+
+# Drop into playbooks-ephemeral-poc as .github/workflows/devlab-halo.yml
+#
+# Every job here runs on a runner that does not exist until the job is queued.
+# The DevLab orchestrator provisions it on demand in a runner slot on one of the
+# pool's machines -- four Strix Halo boxes running Linux and one Windows host
+# -- registers it as --ephemeral, and removes it afterwards.
+#
+# The `strix-halo` label is what routes these jobs to DevLab. The existing
+# `strix-point` and `radeon-r9700` jobs in test-ephemeral-ci.yml stay on the XSJ pool, so both can run
+# against this repository at the same time without either claiming the other's
+# work.
+#
+# The two matrix jobs below check the pool's scheduling contract from opposite
+# sides, and the contract is not "one job at a time" -- it is one job at a time
+# *per machine*, as many machines at once as there are. Until August 2026 DevLab
+# was a single host and this file only tested the first half.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    name: Strix Halo - Linux
+    runs-on: [self-hosted, Linux, strix-halo]
+    steps:
+      - run: echo "Hello from $(hostname) - $(uname -a)"
+      - name: Which slot ran this
+        run: |
+          echo "runner:    ${{ runner.name }}"
+          echo "workspace: ${GITHUB_WORKSPACE}"
+      - name: Accelerators
+        run: lspci -nn | grep -iE 'vga|display|processing accelerator' || echo "none reported"
+
+  # X2-LA01-S05-D01, the pool's Windows machine, and the only job here that can
+  # reach it. Separate from `smoke` rather than a leg of it because the two
+  # share nothing: different labels, different shells, different login account.
+  #
+  # Read the label set twice. `Windows` is in pool.GENERIC_LABELS, so a job
+  # asking for [self-hosted, Windows] matches no resource in this pool at all --
+  # only its own host pin reaches this machine, so it cannot be handed
+  # somebody else's Windows work by mistake.
+  #
+  # That started as a staging measure and is now a deliberate hold. The machine
+  # has run this job, and its GPU is a Radeon 8060S -- a fourth Strix Halo. The
+  # moment a silicon label joins its labels, the queued windows jobs land here.
+  windows:
+    name: S05-D01 - Windows
+    runs-on: [self-hosted, Windows, host-x2-la01-s05-d01]
+    steps:
+      # Every step names its shell on purpose. The runner's default on Windows
+      # is pwsh -- PowerShell Core, which is not what ships with Windows -- so
+      # on a host carrying only 5.1 an unqualified `run:` dies before executing
+      # anything, complaining about pwsh rather than about the step.
+      - name: Which slot ran this
+        shell: cmd
+        run: |
+          echo runner:    %RUNNER_NAME%
+          echo host:      %COMPUTERNAME%
+          echo workspace: %GITHUB_WORKSPACE%
+          ver
+      # The canary for host preparation, and the reason this job exists. The
+      # orchestrator drives this machine over cmd.exe, so the step above passes
+      # on a host where PowerShell is unusable. The runner writes each
+      # `shell: powershell` step to a temp .ps1 and dot-sources it, which the
+      # client-SKU default execution policy refuses -- so a host that never got
+      # devlab_slots.ps1's RemoteSigned fix registers, comes online, takes the
+      # job, and fails right here with UnauthorizedAccess. That reads as a
+      # broken workflow rather than a broken host, which is why it is asserted.
+      - name: PowerShell works at all
+        shell: powershell
+        run: |
+          Get-ExecutionPolicy -List
+          $PSVersionTable.PSVersion
+      # Needs Git for Windows on the machine: the runner bundles its own node
+      # but not git. Last rather than first, against convention, so that a host
+      # missing it still proves both shells before failing.
+      - uses: actions/checkout@v4
+      - name: Accelerators
+        shell: powershell
+        run: Get-CimInstance Win32_VideoController | Format-Table Name, DriverVersion -AutoSize
+
+  # Six legs asking only for `strix-halo`, which every Linux machine in the pool
+  # carries. The pool is four machines, so this asserts two things at once: the
+  # first four legs start together on four distinct hosts -- overlapping stamps,
+  # different runner names -- and the last two cannot start until one of them
+  # finishes. All six landing on one host, or running one after another, means
+  # the pool has collapsed to a single device, most often because two inventory
+  # entries ended up sharing a hostname (pool.device_key keys bare metal on it).
+  # All six starting at once means the per-device exclusion is gone.
+  #
+  # SIX, not four, and it must stay larger than the pool. At four legs the
+  # queueing half is not exercised by anything: every leg starts immediately and
+  # a pool with no exclusion at all would pass. Bump this when a machine joins
+  # -- the matrix cannot be sized from the inventory in a workflow file, so
+  # nothing enforces it here.
+  parallel:
+    name: Halo pool - parallel leg ${{ matrix.leg }}
+    runs-on: [self-hosted, Linux, strix-halo]
+    strategy:
+      fail-fast: false
+      matrix:
+        leg: [1, 2, 3, 4, 5, 6]
+    steps:
+      - name: Occupy a machine
+        run: |
+          echo "runner:    ${{ runner.name }}"
+          echo "host:      $(hostname)"
+          date -u +'start  %H:%M:%S'
+          sleep 45
+          date -u +'finish %H:%M:%S'
+
+  # The other half of the contract. Both legs name one machine, so they are one
+  # device however many machines the pool has, and their two windows must not
+  # overlap. Read them as a pair, not in order: GitHub does not schedule matrix
+  # legs in the order they are written, and under contention B routinely takes
+  # the machine first. "B started before A" is not the failure. Two stamps that
+  # overlap is, and the reason it matters is that two jobs contending for one
+  # iGPU do not fail cleanly. They produce a slow or OOM-killed job, or a flaky
+  # test somewhere unrelated.
+  #
+  # Pinned by the per-host label rather than by `strix-halo`, which is what those
+  # labels are for: every machine carries host-<key> precisely so it can be
+  # addressed alone. Any host in the pool works; S02-D01 is the first one. Not
+  # S01-D03, which this used to name -- that is the orchestrator's own machine,
+  # held out of the pool by config.devlab_local_hosts_excluded, so both legs
+  # queued forever with no error anywhere (issue #114). A pin at a host with no
+  # resource row does not fail, it waits.
+  serialized:
+    name: One machine - leg ${{ matrix.leg }}
+    runs-on: [self-hosted, Linux, host-x2-la01-s02-d01]
+    strategy:
+      fail-fast: false
+      matrix:
+        leg: [A, B]
+    steps:
+      - name: Occupy the host
+        run: |
+          echo "runner:    ${{ runner.name }}"
+          echo "host:      $(hostname)"
+          date -u +'start  %H:%M:%S'
+          sleep 30
+          date -u +'finish %H:%M:%S'
