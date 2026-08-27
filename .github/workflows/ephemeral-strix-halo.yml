@@ -77,7 +77,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Runner identity
-        shell: pwsh
+        shell: powershell
         run: |
           Write-Host "runner:  ${{ runner.name }}"
           Write-Host "os/arch: ${{ runner.os }} / ${{ runner.arch }}"
@@ -85,7 +85,7 @@ jobs:
           Write-Host "os:      $((Get-CimInstance Win32_OperatingSystem).Caption)"
 
       - name: CPU, memory, disk
-        shell: pwsh
+        shell: powershell
         run: |
           $cpu = Get-CimInstance Win32_Processor | Select-Object -First 1
           Write-Host "=== CPU ==="
@@ -99,7 +99,7 @@ jobs:
             Format-Table -AutoSize | Out-String | Write-Host
 
       - name: GPU and NPU
-        shell: pwsh
+        shell: powershell
         run: |
           Write-Host "=== display adapters ==="
           Get-CimInstance Win32_VideoController |
@@ -116,6 +116,6 @@ jobs:
           }
 
       - name: Python
-        shell: pwsh
+        shell: powershell
         run: |
           try { python --version } catch { Write-Host "no python on PATH" }
