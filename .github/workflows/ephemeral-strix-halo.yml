@@ -1,0 +1,121 @@
+# Validation twin of the workflow proposed to amd/gaia.
+#
+# Same two legs, same labels, same steps -- run here first because this repo is
+# already watched by the orchestrator, so it can prove the pool serves both a
+# Linux and a Windows Strix Halo leg before anyone is asked to install the App
+# on a 1.5k-star production repo.
+#
+# 'push' as well as 'workflow_dispatch': a workflow_dispatch-only file has to
+# be on the default branch before it can be dispatched at all, and this is
+# meant to run from a branch without touching main.
+
+name: Ephemeral Strix Halo (Linux + Windows)
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/ephemeral-strix-halo.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: Strix Halo / Linux (ephemeral)
+    # 'strix-halo' names the silicon, 'ephemeral' names the pool. Naming the
+    # pool is what routes the job here rather than at a static runner.
+    runs-on: [self-hosted, Linux, strix-halo, ephemeral]
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Runner identity
+        run: |
+          echo "runner:  ${{ runner.name }}"
+          echo "os/arch: ${{ runner.os }} / ${{ runner.arch }}"
+          echo "host:    $(hostname)"
+          echo "addr:    $(hostname -I | awk '{print $1}')"
+          echo "kernel:  $(uname -sr)"
+
+      - name: CPU, memory, disk
+        run: |
+          echo "=== CPU ==="
+          grep -m1 'model name' /proc/cpuinfo || lscpu | head -20
+          echo "=== memory ==="
+          free -h
+          echo "=== disk ==="
+          df -h "$RUNNER_TEMP" | tail -1
+
+      - name: GPU and NPU
+        run: |
+          # Best-effort: the point is to record what the image actually has,
+          # not to fail the smoke test on a missing optional tool.
+          echo "=== amd-smi / rocm-smi ==="
+          (amd-smi static 2>/dev/null || rocm-smi 2>/dev/null \
+            || echo "no amd-smi/rocm-smi on PATH") | head -30
+          echo "=== render nodes ==="
+          ls -l /dev/dri 2>/dev/null || echo "no /dev/dri"
+          echo "=== NPU (amdxdna) ==="
+          (lsmod 2>/dev/null | grep -i amdxdna || echo "amdxdna module not loaded")
+
+      - name: Python
+        run: |
+          python3 --version || echo "no python3 on PATH"
+
+  windows:
+    name: Strix Halo / Windows (ephemeral)
+    runs-on: [self-hosted, Windows, strix-halo, ephemeral]
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Runner identity
+        shell: pwsh
+        run: |
+          Write-Host "runner:  ${{ runner.name }}"
+          Write-Host "os/arch: ${{ runner.os }} / ${{ runner.arch }}"
+          Write-Host "host:    $env:COMPUTERNAME"
+          Write-Host "os:      $((Get-CimInstance Win32_OperatingSystem).Caption)"
+
+      - name: CPU, memory, disk
+        shell: pwsh
+        run: |
+          $cpu = Get-CimInstance Win32_Processor | Select-Object -First 1
+          Write-Host "=== CPU ==="
+          Write-Host "$($cpu.Name) ($($cpu.NumberOfCores)C/$($cpu.NumberOfLogicalProcessors)T)"
+          Write-Host "=== memory ==="
+          $os = Get-CimInstance Win32_OperatingSystem
+          Write-Host "$([math]::Round($os.TotalVisibleMemorySize/1MB,1)) GB total"
+          Write-Host "=== disk ==="
+          Get-PSDrive -PSProvider FileSystem |
+            Select-Object Name, @{n='FreeGB';e={[math]::Round($_.Free/1GB,1)}} |
+            Format-Table -AutoSize | Out-String | Write-Host
+
+      - name: GPU and NPU
+        shell: pwsh
+        run: |
+          Write-Host "=== display adapters ==="
+          Get-CimInstance Win32_VideoController |
+            Select-Object Name, DriverVersion |
+            Format-Table -AutoSize | Out-String | Write-Host
+          Write-Host "=== NPU (XDNA) ==="
+          # VEN_1022&DEV_17F0 is the Strix Halo XDNA NPU.
+          $npu = Get-PnpDevice | Where-Object { $_.InstanceId -match 'VEN_1022&DEV_17F0' }
+          if ($npu) {
+            $npu | Select-Object Status, FriendlyName |
+              Format-Table -AutoSize | Out-String | Write-Host
+          } else {
+            Write-Host "no XDNA NPU device found"
+          }
+
+      - name: Python
+        shell: pwsh
+        run: |
+          try { python --version } catch { Write-Host "no python on PATH" }
