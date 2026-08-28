@@ -1,0 +1,81 @@
+name: DevLab Provision Probe
+
+# Drop into playbooks-ephemeral-poc as .github/workflows/devlab-provision-probe.yml
+#
+# The smallest job that still exercises the whole provisioning path: a
+# registration token, a runner installed and started in a slot, GitHub handing
+# it the work, and teardown afterwards. It asserts nothing about the host, which
+# is the point -- when this one goes red the fault is in getting a runner up,
+# not in anything the job did.
+#
+# Written to test the retry added for issue #3. Break the target host's slot,
+# dispatch this, and the orchestrator should log 'attempt 1 of 3' and requeue
+# rather than writing the job off; repair the slot and the same job should go
+# green on a later attempt. That is hard to observe with devlab-halo.yml, whose
+# four jobs spread across the pool and take minutes.
+#
+# Aimed at exactly one machine, never at 'strix-halo'. A retry test has to know which
+# host it is breaking, and a readiness test has to know which host it proved.
+# The host is a dispatch input rather than a literal because the question "can
+# this machine still bring a runner up" is asked of a different machine every
+# time -- after a rebuild, after a disk fills, before putting one back in
+# service -- and editing the file to ask it invites asking it of the wrong one.
+
+on:
+  workflow_dispatch:
+    inputs:
+      host:
+        # This list has to track config.DEVLAB_HOST_INVENTORY by hand, and a
+        # host missing from it is a host that cannot be probed at the moment
+        # anyone would most want to -- right after enrolling it. Add the option
+        # in the same change that adds the inventory entry.
+        description: Per-host label to pin to (host-<lowercased lab name>)
+        required: true
+        default: host-x2-la01-s02-d01
+        type: choice
+        options:
+          - host-x2-la01-s02-d01
+          - host-x2-la01-s02-d02
+          - host-x2-la01-s02-d03
+          - host-x2-la01-s02-d04
+          # Enrolled 2026-08-27. The comment above says to add the option in the
+          # same change that adds the inventory entry; that did not happen, and
+          # the cost was exactly what it predicts -- three freshly enrolled
+          # machines that could not be probed at the one moment anybody wanted
+          # to probe them.
+          - host-x2-la01-s01-d05
+          - host-x2-la01-s01-d06
+          - host-x2-la01-s02-d06
+          # Listed, and last, because it is in the inventory but not in the
+          # pool: S01-D03 is the machine the orchestrator itself runs on, and
+          # config.devlab_local_hosts_excluded holds it out unless
+          # DEVLAB_ALLOW_LOCAL_RUNNER is set. It is not. Probing it queues
+          # forever and reports nothing, which is why it is no longer the
+          # default (issue #114). Left selectable so that a run with the flag
+          # set can still be checked.
+          - host-x2-la01-s01-d03
+
+jobs:
+  provision:
+    name: Provisioning round trip
+    runs-on: [self-hosted, Linux, "${{ inputs.host }}"]
+    timeout-minutes: 10
+    steps:
+      - name: Which slot ran this
+        run: |
+          echo "asked for: ${{ inputs.host }}"
+          echo "runner:    ${{ runner.name }}"
+          echo "host:      $(hostname)"
+          echo "workdir:   $(pwd)"
+          echo "user:      $(whoami)"
+
+      # The workspace must not be on the overlayroot tmpfs. That is issue #10:
+      # D04 filled its 32 GB overlay and every provision there failed at session
+      # creation with 'No space left on device', while 1.6 TB sat unused on
+      # /mnt/scratch. Printed rather than asserted -- this probe reports, and a
+      # filesystem of 'overlay' here is the thing to read.
+      - name: Where the workspace actually lives
+        run: |
+          df -h . | tail -1
+          df -hT "${TMPDIR:-/tmp}" | tail -1
+          echo "TMPDIR=${TMPDIR:-<unset>}"
