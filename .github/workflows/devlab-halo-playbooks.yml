@@ -25,7 +25,11 @@ on:
 jobs:
   smoke:
     name: Strix Halo - Linux
-    runs-on: [self-hosted, Linux, strix-halo]
+    # `devlab-dispatch` is the opt-in that reaches this pool; `strix-halo`
+    # only narrows it to Halo silicon, and other AMD fleets carry that name
+    # honestly. Without the token nothing provisions for this leg -- it does
+    # not fail, it queues. See pool.match_labels and ephemeral-ci#160.
+    runs-on: [self-hosted, Linux, devlab-dispatch, strix-halo]
     steps:
       - run: echo "Hello from $(hostname) - $(uname -a)"
       - name: Which slot ran this
@@ -99,7 +103,11 @@ jobs:
   # nothing enforces it here.
   parallel:
     name: Halo pool - parallel leg ${{ matrix.leg }}
-    runs-on: [self-hosted, Linux, strix-halo]
+    # `devlab-dispatch` is the opt-in that reaches this pool; `strix-halo`
+    # only narrows it to Halo silicon, and other AMD fleets carry that name
+    # honestly. Without the token nothing provisions for this leg -- it does
+    # not fail, it queues. See pool.match_labels and ephemeral-ci#160.
+    runs-on: [self-hosted, Linux, devlab-dispatch, strix-halo]
     strategy:
       fail-fast: false
       matrix:
